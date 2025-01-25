@@ -1,111 +1,95 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, ChangeEvent } from 'react';
 import { Person } from '../types/Person';
 
 interface AutoCompleteProps {
   people: Person[];
-  delay?: number;
   onSelected: (person: Person | null) => void;
 }
 
 export const AutoComplete: React.FC<AutoCompleteProps> = ({
   people,
-  delay = 300,
   onSelected,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<Person[]>([]);
-  const [noSuggestions, setNoSuggestions] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
-  const [previousValue, setPreviousValue] = useState('');
+  const [debouncedValue, setDebouncedValue] = useState('');
+  const [isDropdownVisible, setIsDropdownVisible] = useState(false);
 
-  const handleInputChange = useCallback(
-    (value: string) => {
-      if (value === previousValue) {
-        return;
-      }
-
-      setPreviousValue(value);
-
-      if (value === '') {
-        setSuggestions(people);
-        setNoSuggestions(false);
-        onSelected(null);
-
-        return;
-      }
-
-      onSelected(null);
-      const filtered = people.filter(person =>
-        person.name.toLowerCase().includes(value.toLowerCase()),
-      );
-
-      setSuggestions(filtered);
-      setNoSuggestions(filtered.length === 0);
-    },
-    [people, previousValue, onSelected],
-  );
+  const debounceDelay = 300;
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      handleInputChange(inputValue);
-    }, delay);
+      setDebouncedValue(inputValue.trim());
+    }, debounceDelay);
 
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [inputValue, delay, handleInputChange]);
+    return () => clearTimeout(handler);
+  }, [inputValue]);
 
-  const handleSelect = (person: Person) => {
+  useEffect(() => {
+    if (debouncedValue === '') {
+      setSuggestions(people);
+    } else if (debouncedValue.length > 0) {
+      setSuggestions(
+        people.filter(person =>
+          person.name.toLowerCase().includes(debouncedValue.toLowerCase()),
+        ),
+      );
+    }
+  }, [debouncedValue, people]);
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+
+    if (value.trim() === '') {
+      setSuggestions(people);
+    }
+
+    setInputValue(value);
+    setIsDropdownVisible(true);
+    onSelected(null);
+  };
+
+  const handleSuggestionClick = (person: Person) => {
     setInputValue(person.name);
     setSuggestions([]);
-    setNoSuggestions(false);
+    setIsDropdownVisible(false);
     onSelected(person);
   };
 
-  const handleFocus = () => {
-    setIsFocused(true);
-    if (!inputValue) {
-      setSuggestions(people);
-      setNoSuggestions(false);
-    }
-  };
-
-  const handleBlur = () => {
-    setTimeout(() => {
-      setIsFocused(false);
-    }, 200);
-  };
-
   return (
-    <div className={`dropdown ${isFocused ? 'is-active' : ''}`}>
+    <div className="dropdown is-active">
       <div className="dropdown-trigger">
         <input
           type="text"
+          value={inputValue}
+          onChange={handleChange}
           placeholder="Enter a part of the name"
           className="input"
-          value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
+          data-cy="search-input"
+          onFocus={() => setIsDropdownVisible(true)}
         />
       </div>
 
-      {isFocused && (
+      {isDropdownVisible && (
         <div className="dropdown-menu" role="menu" data-cy="suggestions-list">
           <div className="dropdown-content">
-            {suggestions.map(person => (
+            {suggestions.length > 0 ? (
+              suggestions.map(person => (
+                <div
+                  key={person.slug}
+                  className="dropdown-item"
+                  onClick={() => handleSuggestionClick(person)}
+                  data-cy="suggestion-item"
+                >
+                  <p className="has-text-link">{person.name}</p>
+                </div>
+              ))
+            ) : (
               <div
-                key={person.slug}
-                className="dropdown-item"
-                data-cy="suggestion-item"
-                onClick={() => handleSelect(person)}
+                className="dropdown-item has-text-danger"
+                data-cy="no-suggestions-message"
               >
-                <p className="has-text-link">{person.name}</p>
-              </div>
-            ))}
-            {noSuggestions && (
-              <div className="dropdown-item" data-cy="no-suggestions-message">
-                <p className="has-text-danger">No matching suggestions</p>
+                No matching suggestions
               </div>
             )}
           </div>
